@@ -8,6 +8,7 @@ scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/au
 creds = ServiceAccountCredentials.from_json_keyfile_name("credentials.json", scope)
 client = gspread.authorize(creds)
 spreadsheet = client.open("Magnificent 7")
+worksheet = spreadsheet.worksheet("Data")
 
 # --- Technical Indicator Functions ---
 def calculate_rsi(series, period=14):
@@ -34,21 +35,27 @@ def calculate_bollinger_bands(series, window=20, num_std=2):
     lower = sma - num_std * std
     return upper, sma, lower
 
-# --- Fixed Headers ---
+# --- Target tickers ---
+stocks = ["AAPL", "MSFT", "NVDA", "AMZN", "GOOGL", "META", "TSLA"]
+
+# --- Unified header column order ---
 headers = [
-    "Date", "Open", "High", "Low", "Close", "Adj Close", "Volume",
+    "Date", "Ticker", "Open", "High", "Low", "Close", "Adj Close", "Volume",
     "RSI", "MACD", "MACD_signal", "MACD_hist",
     "BB_upper", "BB_middle", "BB_lower",
     "SMA_50", "SMA_200", "EMA_20"
 ]
 
-# --- Stock Symbols ---
-stocks = ["AAPL", "MSFT", "NVDA", "AMZN", "GOOGL", "META", "TSLA"]
+# --- Read existing dates+tickers to prevent duplicates ---
+existing_data = worksheet.get_all_values()
+existing_pairs = set(
+    (row[0], row[1]) for row in existing_data[1:] if len(row) >= 2 and row[0] and row[1]
+)
 
-# --- Main Loop ---
+all_new_rows = []
+
+# --- Loop over tickers and collect rows ---
 for symbol in stocks:
-    print(f"\n📥 Processing {symbol}...")
-
     df = yf.download(symbol, start="2024-01-01", interval="1d")
 
     df["RSI"] = calculate_rsi(df["Close"])
@@ -60,30 +67,27 @@ for symbol in stocks:
 
     df = df.reset_index()
     df["Date"] = df["Date"].astype(str)
+    df["Ticker"] = symbol  # ✅ Add ticker
     df = df.round(2).fillna("")
 
     for col in headers:
         if col not in df.columns:
             df[col] = ""
+
     df = df[headers]
 
-    try:
-        worksheet = spreadsheet.worksheet(symbol)
-    except gspread.exceptions.WorksheetNotFound:
-        print(f"{symbol}: ❌ Worksheet not found, skipping.")
-        continue
+    # ✅ Filter out rows already in the sheet
+    new_df = df[~df[["Date", "Ticker"]].apply(tuple, axis=1).isin(existing_pairs)]
 
-    # ✅ Read existing data and extract existing dates from column A (skip header)
-    existing_data = worksheet.get_all_values()
-    existing_dates = set(
-        row[0] for row in existing_data[1:] if row and len(row) > 0 and row[0].strip()
-    )
-
-    # ✅ Filter new rows
-    new_rows = df[~df["Date"].isin(existing_dates)]
-
-    if not new_rows.empty:
-        worksheet.append_rows(new_rows.values.tolist())
-        print(f"{symbol}: ✅ {len(new_rows)} new rows appended.")
+    if not new_df.empty:
+        all_new_rows.extend(new_df.values.tolist())
+        print(f"{symbol}: ✅ {len(new_df)} new rows collected.")
     else:
         print(f"{symbol}: ⏸️ No new data to append.")
+
+# --- Final append
+if all_new_rows:
+    worksheet.append_rows(all_new_rows)
+    print(f"✅ Appended {len(all_new_rows)} total new rows to 'Data' tab.")
+else:
+    print("⏸️ No new data for any ticker.")
