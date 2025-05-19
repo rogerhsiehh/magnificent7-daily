@@ -1,0 +1,5 @@
+yfinance
+pandas
+pandas_ta
+gspread
+oauth2client

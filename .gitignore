@@ -1,0 +1,13 @@
+# Secret key (will be stored as GitHub secret instead)
+credentials.json
+
+# Python junk
+__pycache__/
+*.pyc
+
+# Virtualenv
+venv/
+
+# macOS & IDE junk
+.DS_Store
+.idea/
