@@ -23,11 +23,11 @@ jobs:
         pip install -r requirements.txt
 
     - name: Restore credentials.json from GitHub secret
+      env:
+        GSPREAD_CREDENTIALS: ${{ secrets.GSPREAD_CREDENTIALS }}
       run: |
         echo "$GSPREAD_CREDENTIALS" | base64 -d > credentials.json
 
     - name: Run Python script
       run: |
         python main.py
-      env:
-        GSPREAD_CREDENTIALS: ${{ secrets.GSPREAD_CREDENTIALS }}
